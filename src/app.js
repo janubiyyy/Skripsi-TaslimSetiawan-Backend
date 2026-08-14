@@ -12,21 +12,18 @@ const rateLimit = require('express-rate-limit');
 const routes = require('./routes/index');
 const errorHandler = require('./middlewares/errorHandler');
 
-const app = express();
+// ── 1. CORS Middleware (FIRST BEFORE HELMET) ─────────────────────────────
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['*'],
+  exposedHeaders: ['*'],
+}));
 
-// ── Security Headers ───────────────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.options('*', cors());
 
-// ── CORS (Universal Preflight & Wildcard Origin) ─────────────────────────
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', '*');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
+// ── 2. Security Headers ──────────────────────────────────────────────────
+app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────
 const limiter = rateLimit({
