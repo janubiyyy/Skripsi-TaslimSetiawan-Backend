@@ -186,14 +186,8 @@ const generateAndSave = async () => {
   // Simpan ke database
   const t = await sequelize.transaction();
   try {
-    await TimeseriesResult.destroy({ where: {}, truncate: true, transaction: t });
-    await TimeseriesResult.bulkCreate(tsRows, {
-      updateOnDuplicate: [
-        'avg_volume_masuk', 'avg_volume_keluar', 'total_volume_masuk',
-        'total_volume_keluar', 'count_records', 'mape_masuk', 'mape_keluar', 'urutan_indeks',
-      ],
-      transaction: t,
-    });
+    await TimeseriesResult.destroy({ where: {}, force: true, transaction: t });
+    await TimeseriesResult.bulkCreate(tsRows, { transaction: t });
     await t.commit();
   } catch (err) {
     await t.rollback();

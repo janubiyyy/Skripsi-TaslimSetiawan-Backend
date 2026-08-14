@@ -60,11 +60,11 @@ const testConnection = async () => {
 const syncDatabase = async () => {
   const isDev = process.env.NODE_ENV === 'development';
   try {
-    await sequelize.sync({ alter: isDev });
+    await sequelize.sync();
     console.log('✅ Database sync selesai.');
 
     // Auto seed admin user jika belum ada user sama sekali
-    const { User } = require('../models');
+    const { User, Dataset, TimeseriesResult } = require('../models');
     const userCount = await User.count();
     if (userCount === 0) {
       const { hashPassword } = require('../utils/hash');
@@ -74,7 +74,24 @@ const syncDatabase = async () => {
         password_hash: hash,
         role: 'admin',
       });
-      console.log('👤 Admin user otomatis dibuat: admin / Admin@123');
+      console.log('✅ User admin awal berhasil dibuat.');
+    }
+
+    // Auto populate pipeline results (preprocessing, kmeans, timeseries) if empty
+    const tsCount = await TimeseriesResult.count();
+    const datasetCount = await Dataset.count();
+    if (datasetCount > 0 && tsCount === 0) {
+      try {
+        const preprocessingService = require('../services/preprocessing.service');
+        const kmeansService = require('../services/kmeans.service');
+        const timeseriesService = require('../services/timeseries.service');
+        await preprocessingService.runMinMaxScaling();
+        await kmeansService.runClustering(3);
+        await timeseriesService.generateAndSave();
+        console.log('✅ Auto-pipeline execution completed on database startup.');
+      } catch (pipeErr) {
+        console.warn('⚠️ Auto-pipeline warning:', pipeErr.message);
+      }
     }
   } catch (error) {
     console.error('❌ Gagal sync database:', error.message);
