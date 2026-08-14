@@ -5,12 +5,13 @@
 const { Sequelize } = require('sequelize');
 
 const isSQLite = !process.env.DB_HOST || process.env.DB_DIALECT === 'sqlite';
+const sqliteStorage = process.env.VERCEL ? ':memory:' : (process.env.DB_STORAGE || '/tmp/skripsi_lalin.sqlite');
 
 const sequelize = isSQLite
   ? new Sequelize({
       dialect: 'sqlite',
-      storage: process.env.DB_STORAGE || '/tmp/skripsi_lalin.sqlite',
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      storage: sqliteStorage,
+      logging: false,
     })
   : new Sequelize(
       process.env.DB_NAME,
