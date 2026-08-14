@@ -95,7 +95,7 @@ const syncDatabase = async () => {
     }
   } catch (error) {
     console.error('❌ Gagal sync database:', error.message);
-    throw error;
+    // Don't throw error to prevent crashing serverless function
   }
 };
 

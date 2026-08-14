@@ -1,20 +1,25 @@
 /**
- * api/index.js — Vercel Serverless Handler for skripsi-backend
+ * api/index.js — Non-blocking Vercel Serverless Handler
  */
 
 const app = require('../src/app');
-const { syncDatabase } = require('../src/config/database');
 
-let isSynced = false;
+let initDone = false;
 
-module.exports = async (req, res) => {
-  if (!isSynced) {
-    try {
-      await syncDatabase();
-      isSynced = true;
-    } catch (err) {
-      console.error('Database sync error on Vercel serverless init:', err.message);
-    }
+async function initDb() {
+  if (initDone) return;
+  initDone = true;
+  try {
+    const { syncDatabase } = require('../src/config/database');
+    await syncDatabase();
+    console.log('✅ Serverless DB init completed.');
+  } catch (err) {
+    console.error('⚠️ Serverless DB init error (non-fatal):', err.message);
   }
+}
+
+module.exports = (req, res) => {
+  // Run DB init asynchronously without blocking response
+  initDb().catch((e) => console.error(e));
   return app(req, res);
 };
