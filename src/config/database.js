@@ -54,6 +54,20 @@ const syncDatabase = async () => {
   try {
     await sequelize.sync({ alter: isDev });
     console.log('✅ Database sync selesai.');
+
+    // Auto seed admin user jika belum ada user sama sekali
+    const { User } = require('../models');
+    const userCount = await User.count();
+    if (userCount === 0) {
+      const { hashPassword } = require('../utils/hash');
+      const hash = await hashPassword('Admin@123');
+      await User.create({
+        username: 'admin',
+        password_hash: hash,
+        role: 'admin',
+      });
+      console.log('👤 Admin user otomatis dibuat: admin / Admin@123');
+    }
   } catch (error) {
     console.error('❌ Gagal sync database:', error.message);
     throw error;
