@@ -68,12 +68,12 @@ User.init(
     hooks: {
       // Hash password sebelum create atau update
       beforeCreate: async (user) => {
-        if (user.password_hash) {
+        if (user.password_hash && !user.password_hash.startsWith('$2a$') && !user.password_hash.startsWith('$2b$')) {
           user.password_hash = await bcrypt.hash(user.password_hash, 12);
         }
       },
       beforeUpdate: async (user) => {
-        if (user.changed('password_hash')) {
+        if (user.changed('password_hash') && !user.password_hash.startsWith('$2a$') && !user.password_hash.startsWith('$2b$')) {
           user.password_hash = await bcrypt.hash(user.password_hash, 12);
         }
       },

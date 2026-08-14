@@ -12,6 +12,8 @@ const rateLimit = require('express-rate-limit');
 const routes = require('./routes/index');
 const errorHandler = require('./middlewares/errorHandler');
 
+const app = express();
+
 // ── 1. CORS Middleware (FIRST BEFORE HELMET) ─────────────────────────────
 app.use(cors({
   origin: '*',
