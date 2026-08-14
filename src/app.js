@@ -15,14 +15,16 @@ const errorHandler = require('./middlewares/errorHandler');
 const app = express();
 
 // ── 1. CORS Middleware (FIRST BEFORE HELMET) ─────────────────────────────
-app.use(cors({
+const corsOptions = {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['*'],
-  exposedHeaders: ['*'],
-}));
-
-app.options('*', cors());
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin',
+                   'Bypass-Tunnel-Remainder', 'ngrok-skip-browser-warning'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ── 2. Security Headers ──────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: false }));
