@@ -60,7 +60,22 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// ── Health Check ──────────────────────────────────────────────────────────
+// ── Root & Health Check ──────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Skripsi Lalin Backend API Online',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth/login',
+      datasets: '/api/datasets',
+      preprocessing: '/api/preprocessing/stats',
+      kmeans: '/api/kmeans/results',
+      timeseries: '/api/timeseries/summary',
+    },
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
