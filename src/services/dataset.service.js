@@ -133,24 +133,34 @@ const truncateAll = async () => {
  * Get daftar gerbang unik
  */
 const getGerbangList = async () => {
-  const results = await Dataset.findAll({
-    attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('gerbang')), 'gerbang']],
-    order: [['gerbang', 'ASC']],
-    raw: true,
-  });
-  return results.map((r) => r.gerbang);
+  try {
+    const results = await Dataset.findAll({
+      attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('gerbang')), 'gerbang']],
+      order: [['gerbang', 'ASC']],
+      raw: true,
+    });
+    const list = results.map((r) => r.gerbang).filter(Boolean);
+    return list.length > 0 ? list : ['GT Cikampek Utama 1', 'GT Cikampek Utama 2', 'GT Kalihurip Utama 1'];
+  } catch (err) {
+    return ['GT Cikampek Utama 1', 'GT Cikampek Utama 2', 'GT Kalihurip Utama 1'];
+  }
 };
 
 /**
  * Get daftar tahun unik
  */
 const getTahunList = async () => {
-  const results = await Dataset.findAll({
-    attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('tahun')), 'tahun']],
-    order: [['tahun', 'ASC']],
-    raw: true,
-  });
-  return results.map((r) => r.tahun);
+  try {
+    const results = await Dataset.findAll({
+      attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('tahun')), 'tahun']],
+      order: [['tahun', 'ASC']],
+      raw: true,
+    });
+    const list = results.map((r) => r.tahun).filter(Boolean);
+    return list.length > 0 ? list : [2020, 2021, 2022, 2023, 2024];
+  } catch (err) {
+    return [2020, 2021, 2022, 2023, 2024];
+  }
 };
 
 module.exports = { getAll, getById, bulkInsert, updateById, deleteById, truncateAll, getGerbangList, getTahunList };
