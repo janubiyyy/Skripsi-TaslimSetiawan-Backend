@@ -11,9 +11,11 @@ try {
   const sqliteStorage = process.env.VERCEL ? ':memory:' : (process.env.DB_STORAGE || '/tmp/skripsi_lalin.sqlite');
 
   if (isSQLite) {
+    const sqlite3 = require('sqlite3');
     sequelize = new Sequelize({
       dialect: 'sqlite',
       storage: sqliteStorage,
+      dialectModule: sqlite3,
       logging: false,
     });
   } else {
@@ -33,8 +35,12 @@ try {
   }
 } catch (err) {
   console.error('⚠️ Error initializing Sequelize instance:', err.message);
-  // Fallback to in-memory sqlite if any error
-  sequelize = new Sequelize({ dialect: 'sqlite', storage: ':memory:', logging: false });
+  try {
+    const sqlite3 = require('sqlite3');
+    sequelize = new Sequelize({ dialect: 'sqlite', storage: ':memory:', dialectModule: sqlite3, logging: false });
+  } catch (e) {
+    console.error('⚠️ SQLite fallback error:', e.message);
+  }
 }
 
 /**
