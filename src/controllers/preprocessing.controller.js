@@ -91,13 +91,14 @@ const runScaling = async (req, res, next) => {
  */
 const getResults = async (req, res, next) => {
   try {
-    const { page = 1, limit = 100 } = req.query;
-    const result = await preprocessingService.getAll({ page, limit });
+    const { page = 1, limit = 100, tahun, indeks_hari, gerbang } = req.query;
+    const result = await preprocessingService.getAll({ page, limit, tahun, indeks_hari, gerbang });
     return paginatedResponse(res, { ...result, message: 'Data preprocessing berhasil diambil.' });
   } catch (error) {
     next(error);
   }
 };
+
 
 /**
  * GET /api/preprocessing/logs

@@ -458,7 +458,7 @@ const runMinMaxScaling = async () => {
 /**
  * Get semua hasil preprocessing dengan data aslinya
  */
-const getAll = async ({ page = 1, limit = 100 } = {}) => {
+const getAll = async ({ page = 1, limit = 100, tahun, gerbang, indeks_hari } = {}) => {
   const p = parseInt(page) || 1;
   const l = parseInt(limit) || 100;
   const offset = (p - 1) * l;
@@ -470,11 +470,22 @@ const getAll = async ({ page = 1, limit = 100 } = {}) => {
     } catch (e) {}
   }
 
-  const data = memoryStore.preprocessing || [];
-  const rows = data.slice(offset, offset + l);
+  let data = memoryStore.preprocessing || [];
 
+  if (gerbang) {
+    data = data.filter((r) => r.dataset?.gerbang && r.dataset.gerbang.toLowerCase().includes(gerbang.toLowerCase()));
+  }
+  if (tahun) {
+    data = data.filter((r) => r.dataset?.tahun === parseInt(tahun));
+  }
+  if (indeks_hari) {
+    data = data.filter((r) => r.dataset?.indeks_hari === indeks_hari);
+  }
+
+  const rows = data.slice(offset, offset + l);
   return { data: rows, total: data.length, page: p, limit: l };
 };
+
 
 /**
  * Get log riwayat import
