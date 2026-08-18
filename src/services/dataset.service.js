@@ -11,34 +11,14 @@ const { AppError } = require('../middlewares/errorHandler');
  * Get semua dataset dengan filter dan pagination
  */
 const getAll = async ({ page = 1, limit = 50, gerbang, tahun, indeks_hari } = {}) => {
-  const offset = (page - 1) * limit;
-  const where = {};
+  const p = parseInt(page) || 1;
+  const l = parseInt(limit) || 50;
+  const offset = (p - 1) * l;
 
-  if (gerbang) where.gerbang = { [Op.like]: `%${gerbang}%` };
-  if (tahun) where.tahun = parseInt(tahun);
-  if (indeks_hari) where.indeks_hari = indeks_hari;
-
-  let rows = [];
-  let count = 0;
-
-  try {
-    const result = await Dataset.findAndCountAll({
-      where,
-      limit: parseInt(limit),
-      offset,
-      order: [['tanggal', 'ASC'], ['gerbang', 'ASC']],
-    });
-    rows = result.rows;
-    count = result.count;
-  } catch (err) {
-    console.warn('Dataset DB query error:', err.message);
-  }
-
-  // Memory store fallback for serverless environment
-  if (!rows || rows.length === 0) {
+  // On Vercel serverless environment, use memoryStore for reliable data rendering
+  if (process.env.VERCEL) {
     const memoryStore = require('../config/memoryStore');
     let storeData = memoryStore.datasets || [];
-
 
     if (gerbang) {
       storeData = storeData.filter((r) => r.gerbang && r.gerbang.toLowerCase().includes(gerbang.toLowerCase()));
@@ -50,17 +30,45 @@ const getAll = async ({ page = 1, limit = 50, gerbang, tahun, indeks_hari } = {}
       storeData = storeData.filter((r) => r.indeks_hari === indeks_hari);
     }
 
-    count = storeData.length;
-    rows = storeData.slice(offset, offset + limit);
+    const total = storeData.length;
+    const data = storeData.slice(offset, offset + l);
+    return { data, total, page: p, limit: l };
   }
 
-  return { data: rows, total: count, page: parseInt(page), limit: parseInt(limit) };
+  // Database query for local env
+  const where = {};
+  if (gerbang) where.gerbang = { [Op.like]: `%${gerbang}%` };
+  if (tahun) where.tahun = parseInt(tahun);
+  if (indeks_hari) where.indeks_hari = indeks_hari;
+
+  let rows = [];
+  let count = 0;
+  try {
+    const result = await Dataset.findAndCountAll({
+      where,
+      limit: l,
+      offset,
+      order: [['tanggal', 'ASC'], ['gerbang', 'ASC']],
+    });
+    rows = result.rows;
+    count = result.count;
+  } catch (err) {
+    console.warn('Dataset DB query error:', err.message);
+  }
+
+  return { data: rows, total: count, page: p, limit: l };
 };
 
 /**
  * Get satu dataset by ID
  */
 const getById = async (id) => {
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    const dataset = memoryStore.datasets.find((d) => d.id === parseInt(id));
+    if (!dataset) throw new AppError('Dataset tidak ditemukan.', 404);
+    return dataset;
+  }
   const dataset = await Dataset.findByPk(id, {
     include: ['preprocessingResults'],
   });
@@ -70,98 +78,83 @@ const getById = async (id) => {
 
 /**
  * Bulk insert dari array parsed CSV
- * @param {Array<object>} rows — array baris CSV yang sudah di-parse
  */
 const bulkInsert = async (rows) => {
   if (!rows || rows.length === 0) {
     throw new AppError('Tidak ada data untuk diimport.', 400);
   }
-
-  const created = await Dataset.bulkCreate(rows, {
-    validate: true,
-    ignoreDuplicates: false,
-  });
-
-  return { inserted: created.length };
-};
-
-/**
- * Update 1 baris dataset by ID & pemicu ulang pipeline otomatis
- */
-const updateById = async (id, data) => {
-  const dataset = await Dataset.findByPk(id);
-  if (!dataset) throw new AppError('Data tidak ditemukan.', 404);
-
-  const gerbang = data.gerbang !== undefined ? String(data.gerbang).trim() : dataset.gerbang;
-  const tahun = data.tahun !== undefined ? parseInt(data.tahun) : dataset.tahun;
-  const indeks_hari = data.indeks_hari !== undefined ? (data.indeks_hari ? String(data.indeks_hari).trim().toUpperCase() : null) : dataset.indeks_hari;
-  const v_masuk = data.volume_masuk !== undefined ? parseInt(data.volume_masuk) : (data.v_masuk !== undefined ? parseInt(data.v_masuk) : dataset.volume_masuk);
-  const v_keluar = data.volume_keluar !== undefined ? parseInt(data.volume_keluar) : (data.v_keluar !== undefined ? parseInt(data.v_keluar) : dataset.volume_keluar);
-  const v_total = v_masuk + v_keluar;
-  const tanggal = data.tanggal !== undefined ? (data.tanggal || null) : dataset.tanggal;
-
-  await dataset.update({
-    gerbang,
-    tahun,
-    indeks_hari,
-    volume_masuk: v_masuk,
-    volume_keluar: v_keluar,
-    volume_total: v_total,
-    tanggal,
-  });
-
-  // Re-run pipeline otomatis (Scaling -> K-Means -> Time Series)
-  try {
-    const preprocessingService = require('./preprocessing.service');
-    const kmeansService = require('./kmeans.service');
-    const timeseriesService = require('./timeseries.service');
-
-    await preprocessingService.runMinMaxScaling();
-    await kmeansService.runClustering(3);
-    await timeseriesService.generateAndSave();
-  } catch (pipelineErr) {
-    console.log('⚠️ Re-pipeline warning:', pipelineErr.message);
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    memoryStore.datasets = [...rows, ...memoryStore.datasets];
+    return { insertedCount: rows.length };
   }
-
-  return { message: 'Data berhasil diperbarui.', data: dataset };
-};
-
-/**
- * Hapus 1 baris dataset by ID
- */
-const deleteById = async (id) => {
-  const dataset = await Dataset.findByPk(id);
-  if (!dataset) throw new AppError('Data tidak ditemukan.', 404);
-  await dataset.destroy();
-  return { message: 'Data berhasil dihapus.' };
-};
-
-/**
- * Hapus semua data (reset total) — admin only
- */
-const truncateAll = async () => {
-  const { sequelize } = require('../config/database');
-  const { Dataset, PreprocessingResult, KmeansCluster, TimeseriesResult, PreprocessingLog } = require('../models');
-
   const t = await sequelize.transaction();
   try {
-    await PreprocessingResult.destroy({ where: {}, transaction: t });
-    await KmeansCluster.destroy({ where: {}, transaction: t });
-    await TimeseriesResult.destroy({ where: {}, transaction: t });
-    await PreprocessingLog.destroy({ where: {}, transaction: t });
-    await Dataset.destroy({ where: {}, transaction: t });
+    const created = await Dataset.bulkCreate(rows, { validate: true, transaction: t });
     await t.commit();
-  } catch (err) {
+    return { insertedCount: created.length };
+  } catch (error) {
     await t.rollback();
-    throw err;
+    throw error;
   }
-  return { message: 'Semua data dataset dan hasil analisis berhasil dihapus.' };
+};
+
+/**
+ * Update dataset by ID
+ */
+const updateById = async (id, data) => {
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    const idx = memoryStore.datasets.findIndex((d) => d.id === parseInt(id));
+    if (idx !== -1) {
+      memoryStore.datasets[idx] = { ...memoryStore.datasets[idx], ...data };
+      return memoryStore.datasets[idx];
+    }
+    throw new AppError('Dataset tidak ditemukan.', 404);
+  }
+  const dataset = await Dataset.findByPk(id);
+  if (!dataset) throw new AppError('Dataset tidak ditemukan.', 404);
+  await dataset.update(data);
+  return dataset;
+};
+
+/**
+ * Delete dataset by ID
+ */
+const deleteById = async (id) => {
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    memoryStore.datasets = memoryStore.datasets.filter((d) => d.id !== parseInt(id));
+    return { message: 'Dataset berhasil dihapus.' };
+  }
+  const dataset = await Dataset.findByPk(id);
+  if (!dataset) throw new AppError('Dataset tidak ditemukan.', 404);
+  await dataset.destroy();
+  return { message: 'Dataset berhasil dihapus.' };
+};
+
+/**
+ * Reset / truncate all datasets
+ */
+const truncateAll = async () => {
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    memoryStore.datasets = [];
+    return { message: 'Semua data dataset berhasil dihapus.' };
+  }
+  await Dataset.destroy({ where: {} });
+  return { message: 'Semua data dataset berhasil dihapus.' };
 };
 
 /**
  * Get daftar gerbang unik
  */
 const getGerbangList = async () => {
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    const list = [...new Set(memoryStore.datasets.map((d) => d.gerbang).filter(Boolean))];
+    return list.length > 0 ? list : ['GT Cikampek Utama 1', 'GT Cikampek Utama 2', 'GT Kalihurip Utama 1'];
+  }
   try {
     const results = await Dataset.findAll({
       attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('gerbang')), 'gerbang']],
@@ -179,6 +172,11 @@ const getGerbangList = async () => {
  * Get daftar tahun unik
  */
 const getTahunList = async () => {
+  if (process.env.VERCEL) {
+    const memoryStore = require('../config/memoryStore');
+    const list = [...new Set(memoryStore.datasets.map((d) => d.tahun).filter(Boolean))].sort();
+    return list.length > 0 ? list : [2020, 2021, 2022, 2023, 2024];
+  }
   try {
     const results = await Dataset.findAll({
       attributes: [[require('sequelize').fn('DISTINCT', require('sequelize').col('tahun')), 'tahun']],
