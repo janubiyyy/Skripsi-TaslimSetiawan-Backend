@@ -77,10 +77,7 @@ const errorHandler = (err, req, res, _next) => {
   // ── Generic Server Error ────────────────────────────────────────────────
   return res.status(500).json({
     status: 'error',
-    message:
-      process.env.NODE_ENV === 'production'
-        ? 'Terjadi kesalahan pada server. Coba lagi nanti.'
-        : err.message || 'Internal Server Error',
+    message: err.message || 'Terjadi kesalahan pada server. Coba lagi nanti.',
   });
 };
 
