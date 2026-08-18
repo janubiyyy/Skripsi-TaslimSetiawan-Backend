@@ -114,13 +114,23 @@ const parseDate = (val) => {
  * @param {string} fileExt — 'xlsx' | 'xls' | 'csv'
  * @returns {{ rawRows: object[], sheetName: string }}
  */
-const parseFile = (filePath, fileExt) => {
-  const workbook = XLSX.readFile(filePath, {
-    type: 'file',
-    cellDates: false,  // Kita handle date secara manual
-    raw: false,
-    defval: null,
-  });
+const parseFile = (fileInput, fileExt) => {
+  let workbook;
+  if (Buffer.isBuffer(fileInput)) {
+    workbook = XLSX.read(fileInput, {
+      type: 'buffer',
+      cellDates: false,
+      raw: false,
+      defval: null,
+    });
+  } else {
+    workbook = XLSX.readFile(fileInput, {
+      type: 'file',
+      cellDates: false,
+      raw: false,
+      defval: null,
+    });
+  }
 
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
@@ -131,6 +141,7 @@ const parseFile = (filePath, fileExt) => {
 
   return { rawRows, sheetName };
 };
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 2: CLEANING — Missing Value & Duplikat
@@ -245,15 +256,18 @@ const importFile = async (file) => {
   let sheetName = '';
 
   try {
-    const parsed = parseFile(file.path, ext);
+    const parsed = parseFile(file.buffer || file.path, ext);
     rawRows = parsed.rawRows;
     sheetName = parsed.sheetName;
   } catch (err) {
     throw new AppError(`Gagal membaca file: ${err.message}`, 422);
   } finally {
-    // Hapus file temp
-    if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    // Hapus file temp jika dari disk
+    if (file.path && fs.existsSync(file.path)) {
+      try { fs.unlinkSync(file.path); } catch (e) {}
+    }
   }
+
 
   if (rawRows.length === 0) {
     throw new AppError('File kosong atau tidak ada data yang bisa dibaca.', 400);

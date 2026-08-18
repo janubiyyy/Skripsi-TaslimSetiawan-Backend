@@ -8,17 +8,9 @@ const path = require('path');
 const preprocessingService = require('../services/preprocessing.service');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
 
-// ── Multer Upload Config ───────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/');
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `import_${Date.now()}${ext}`);
-  },
-});
+// ── Multer Upload Config (Memory Storage for Vercel/Cloud Serverless) ─────
+const storage = multer.memoryStorage();
+
 
 const ALLOWED_MIMETYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
