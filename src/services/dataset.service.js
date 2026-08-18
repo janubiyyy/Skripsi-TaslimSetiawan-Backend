@@ -35,9 +35,10 @@ const getAll = async ({ page = 1, limit = 50, gerbang, tahun, indeks_hari } = {}
   }
 
   // Memory store fallback for serverless environment
-  if ((!rows || rows.length === 0) && count === 0) {
+  if (!rows || rows.length === 0) {
     const memoryStore = require('../config/memoryStore');
     let storeData = memoryStore.datasets || [];
+
 
     if (gerbang) {
       storeData = storeData.filter((r) => r.gerbang && r.gerbang.toLowerCase().includes(gerbang.toLowerCase()));
