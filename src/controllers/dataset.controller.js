@@ -45,7 +45,7 @@ const uploadCSV = async (req, res, next) => {
     }
 
     // Parse CSV
-    const fileContent = fs.readFileSync(req.file.path, 'utf8');
+    const fileContent = req.file.buffer ? req.file.buffer.toString('utf8') : fs.readFileSync(req.file.path, 'utf8');
     let records;
     try {
       records = parse(fileContent, {
@@ -54,9 +54,12 @@ const uploadCSV = async (req, res, next) => {
         trim: true,
       });
     } catch (parseErr) {
-      fs.unlinkSync(req.file.path);
+      if (req.file.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) {}
+      }
       return errorResponse(res, { message: `Format CSV tidak valid: ${parseErr.message}`, statusCode: 422 });
     }
+
 
     // Map CSV columns ke model fields
     // CSV header: id,gerbang,tahun,indeks_hari,v_masuk,v_keluar,v_total,tanggal,hari,urutan_hari

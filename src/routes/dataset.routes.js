@@ -11,16 +11,9 @@ const datasetController = require('../controllers/dataset.controller');
 const { authenticate } = require('../middlewares/auth.middleware');
 const { requireAdmin } = require('../middlewares/role.middleware');
 
-// ── Multer Setup (upload CSV) ──────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads/'));
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `dataset_${Date.now()}${ext}`);
-  },
-});
+// ── Multer Setup (Memory Storage for Vercel/Cloud Serverless) ─────────────
+const storage = multer.memoryStorage();
+
 
 const upload = multer({
   storage,
