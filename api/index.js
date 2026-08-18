@@ -1,7 +1,17 @@
 /**
- * api/index.js — Clean Express Vercel Serverless Function Handler
+ * api/index.js — Diagnostic Handler for Vercel Serverless Function
  */
 
-const app = require('../src/app');
-
-module.exports = app;
+module.exports = (req, res) => {
+  try {
+    const app = require('../src/app');
+    return app(req, res);
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Vercel Serverless Init Error',
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+};
