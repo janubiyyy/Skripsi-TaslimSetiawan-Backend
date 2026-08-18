@@ -55,15 +55,18 @@ const notFoundResponse = (res, message = 'Data tidak ditemukan.') => {
  * Response paginasi
  */
 const paginatedResponse = (res, { data, total, page, limit, message = 'Berhasil' } = {}) => {
+  const safeTotal = typeof total === 'number' ? total : (Array.isArray(data) ? data.length : 0);
+  const safePage = parseInt(page) || 1;
+  const safeLimit = parseInt(limit) || 50;
   return res.status(200).json({
     status: 'success',
     message,
-    data,
+    data: data || [],
     meta: {
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      totalPages: Math.ceil(total / limit),
+      total: safeTotal,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(safeTotal / safeLimit) || 1,
     },
   });
 };

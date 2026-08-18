@@ -97,9 +97,14 @@ const syncDatabase = async () => {
     if (!sequelize) return;
     await sequelize.sync();
     console.log('✅ Database sync selesai.');
+
+    // Auto seed admin user & sample dataset
+    const { seedSampleData } = require('./seedData');
+    await seedSampleData();
   } catch (error) {
     console.error('❌ Gagal sync database:', error.message);
   }
 };
+
 
 module.exports = { sequelize, testConnection, syncDatabase };
