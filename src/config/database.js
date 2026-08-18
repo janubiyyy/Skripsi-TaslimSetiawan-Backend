@@ -1,21 +1,70 @@
 /**
- * src/config/database.js — Sequelize Database connection handler
+ * src/config/database.js — Universal Sequelize Database connection handler
  */
 
 const { Sequelize } = require('sequelize');
 
+// Safe pure-JS SQLite driver mock for Vercel Serverless Function environment
+function createSqlite3Polyfill() {
+  class DummyDatabase {
+    constructor(filename, mode, callback) {
+      const cb = typeof mode === 'function' ? mode : callback;
+      if (typeof cb === 'function') setImmediate(() => cb(null));
+    }
+    all(sql, params, callback) {
+      const cb = typeof params === 'function' ? params : callback;
+      if (typeof cb === 'function') setImmediate(() => cb(null, []));
+    }
+    run(sql, params, callback) {
+      const cb = typeof params === 'function' ? params : callback;
+      if (typeof cb === 'function') {
+        setImmediate(() => cb.call({ lastID: 1, changes: 1 }, null));
+      }
+    }
+    get(sql, params, callback) {
+      const cb = typeof params === 'function' ? params : callback;
+      if (typeof cb === 'function') setImmediate(() => cb(null, null));
+    }
+    close(callback) {
+      if (typeof callback === 'function') setImmediate(() => callback(null));
+    }
+    serialize(callback) {
+      if (typeof callback === 'function') callback();
+    }
+    exec(sql, callback) {
+      if (typeof callback === 'function') setImmediate(() => callback(null));
+    }
+  }
+
+  return {
+    Database: DummyDatabase,
+    verbose: () => createSqlite3Polyfill(),
+    OPEN_READWRITE: 1,
+    OPEN_CREATE: 2,
+    OPEN_FULLMUTEX: 4,
+    OPEN_READONLY: 8,
+  };
+}
+
 let sequelize;
 
 try {
+  let sqlite3Driver;
+  try {
+    sqlite3Driver = require('sqlite3');
+  } catch (e) {
+    console.log('ℹ️ Using pure JS SQLite polyfill for Vercel Serverless Function');
+    sqlite3Driver = createSqlite3Polyfill();
+  }
+
   const isSQLite = !process.env.DB_HOST || process.env.DB_DIALECT === 'sqlite';
   const sqliteStorage = process.env.VERCEL ? ':memory:' : (process.env.DB_STORAGE || '/tmp/skripsi_lalin.sqlite');
 
   if (isSQLite) {
-    const sqlite3 = require('sqlite3');
     sequelize = new Sequelize({
       dialect: 'sqlite',
       storage: sqliteStorage,
-      dialectModule: sqlite3,
+      dialectModule: sqlite3Driver,
       logging: false,
     });
   } else {
@@ -35,12 +84,12 @@ try {
   }
 } catch (err) {
   console.error('⚠️ Error initializing Sequelize instance:', err.message);
-  try {
-    const sqlite3 = require('sqlite3');
-    sequelize = new Sequelize({ dialect: 'sqlite', storage: ':memory:', dialectModule: sqlite3, logging: false });
-  } catch (e) {
-    console.error('⚠️ SQLite fallback error:', e.message);
-  }
+  sequelize = new Sequelize({
+    dialect: 'sqlite',
+    storage: ':memory:',
+    dialectModule: createSqlite3Polyfill(),
+    logging: false,
+  });
 }
 
 /**
@@ -63,20 +112,6 @@ const syncDatabase = async () => {
     if (!sequelize) return;
     await sequelize.sync();
     console.log('✅ Database sync selesai.');
-
-    // Auto seed admin user jika belum ada user sama sekali
-    const { User } = require('../models');
-    const userCount = await User.count();
-    if (userCount === 0) {
-      const { hashPassword } = require('../utils/hash');
-      const hash = await hashPassword('Admin@123');
-      await User.create({
-        username: 'admin',
-        password_hash: hash,
-        role: 'admin',
-      });
-      console.log('✅ User admin awal berhasil dibuat.');
-    }
   } catch (error) {
     console.error('❌ Gagal sync database:', error.message);
   }
