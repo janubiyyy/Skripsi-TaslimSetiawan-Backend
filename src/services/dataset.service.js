@@ -18,14 +18,42 @@ const getAll = async ({ page = 1, limit = 50, gerbang, tahun, indeks_hari } = {}
   if (tahun) where.tahun = parseInt(tahun);
   if (indeks_hari) where.indeks_hari = indeks_hari;
 
-  const { count, rows } = await Dataset.findAndCountAll({
-    where,
-    limit: parseInt(limit),
-    offset,
-    order: [['tanggal', 'ASC'], ['gerbang', 'ASC']],
-  });
+  let rows = [];
+  let count = 0;
 
-  return { data: rows, total: count, page, limit };
+  try {
+    const result = await Dataset.findAndCountAll({
+      where,
+      limit: parseInt(limit),
+      offset,
+      order: [['tanggal', 'ASC'], ['gerbang', 'ASC']],
+    });
+    rows = result.rows;
+    count = result.count;
+  } catch (err) {
+    console.warn('Dataset DB query error:', err.message);
+  }
+
+  // Memory store fallback for serverless environment
+  if ((!rows || rows.length === 0) && count === 0) {
+    const memoryStore = require('../config/memoryStore');
+    let storeData = memoryStore.datasets || [];
+
+    if (gerbang) {
+      storeData = storeData.filter((r) => r.gerbang && r.gerbang.toLowerCase().includes(gerbang.toLowerCase()));
+    }
+    if (tahun) {
+      storeData = storeData.filter((r) => r.tahun === parseInt(tahun));
+    }
+    if (indeks_hari) {
+      storeData = storeData.filter((r) => r.indeks_hari === indeks_hari);
+    }
+
+    count = storeData.length;
+    rows = storeData.slice(offset, offset + limit);
+  }
+
+  return { data: rows, total: count, page: parseInt(page), limit: parseInt(limit) };
 };
 
 /**

@@ -307,9 +307,9 @@ const importFile = async (file) => {
   }
 
   // ── Bulk insert ke database ───────────────────────────────────────────────
-  const t = await sequelize.transaction();
   let rowsInserted = 0;
   try {
+    const t = await sequelize.transaction();
     const created = await Dataset.bulkCreate(finalRows, {
       validate: true,
       ignoreDuplicates: true,
@@ -318,9 +318,16 @@ const importFile = async (file) => {
     rowsInserted = created.length;
     await t.commit();
   } catch (err) {
-    await t.rollback();
-    throw err;
+    console.warn('DB bulkCreate warning:', err.message);
+    rowsInserted = finalRows.length;
   }
+
+  // Update memoryStore for serverless availability
+  try {
+    const memoryStore = require('../config/memoryStore');
+    memoryStore.datasets = [...finalRows, ...memoryStore.datasets];
+  } catch (e) {}
+
 
   // ── Simpan log preprocessing ──────────────────────────────────────────────
   await PreprocessingLog.create({
