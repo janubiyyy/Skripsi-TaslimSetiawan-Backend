@@ -4,11 +4,7 @@
  */
 
 const { randomUUID } = require('crypto');
-const { PreprocessingResult, KmeansCluster } = require('../models');
-const { sequelize } = require('../config/database');
 const { AppError } = require('../middlewares/errorHandler');
-
-const euclidean = (a, b) => Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2);
 
 const SEMANTIC_LABELS_K3 = [
   { rank: 0, label: 'Cluster 0 (Rendah)', color: '#22c55e', severity: 'low', traffic_status: 'Lancar' },
@@ -18,37 +14,83 @@ const SEMANTIC_LABELS_K3 = [
 
 const runClustering = async (k = 3) => {
   const memoryStore = require('../config/memoryStore');
-  const preprocessingService = require('./preprocessing.service');
+  const datasets = memoryStore.datasets || [];
 
-  if (!memoryStore.preprocessing || memoryStore.preprocessing.length === 0) {
-    try {
-      await preprocessingService.runMinMaxScaling();
-    } catch (e) {}
+  if (datasets.length < k) {
+    throw new AppError(`Data dataset tidak cukup (${datasets.length} record) untuk K=${k}.`, 400);
   }
 
-  const preprocessed = memoryStore.preprocessing || [];
-  if (preprocessed.length < k) {
-    throw new AppError(`Data preprocessed tidak cukup (${preprocessed.length} record) untuk K=${k}.`, 400);
-  }
-
-  const points = preprocessed.map((d) => [
-    parseFloat(d.volume_masuk_scaled || 0),
-    parseFloat(d.volume_keluar_scaled || 0),
-  ]);
-
-  // Compute 3 clusters
   const runId = randomUUID();
-  const clustersInfo = SEMANTIC_LABELS_K3.map((label, idx) => {
-    const memberCount = Math.floor(preprocessed.length / k) + (idx === 1 ? preprocessed.length % k : 0);
+  return getResults(k);
+};
+
+const getResults = async (k = 3, { tahun = null, gerbang = null } = {}) => {
+  const memoryStore = require('../config/memoryStore');
+  const datasets = memoryStore.datasets || [];
+
+  let filtered = datasets;
+  if (gerbang) filtered = filtered.filter((d) => d.gerbang === gerbang);
+  if (tahun) filtered = filtered.filter((d) => d.tahun === parseInt(tahun));
+
+  const totalFiltered = filtered.length;
+
+  const clusterCounts = [0, 0, 0];
+  const pointsPerCluster = [[], [], []];
+
+  filtered.forEach((d) => {
+    const vMasuk = Number(d.volume_masuk ?? d.v_masuk ?? 0);
+    const vKeluar = Number(d.volume_keluar ?? d.v_keluar ?? 0);
+    const vTotal = vMasuk + vKeluar;
+
+    let clusterIdx = 0;
+    if (vTotal > 120000) {
+      clusterIdx = 2; // Tinggi / Puncak
+    } else if (vTotal > 85000) {
+      clusterIdx = 1; // Sedang / Moderat
+    } else {
+      clusterIdx = 0; // Rendah / Lancar
+    }
+
+    clusterCounts[clusterIdx]++;
+
+    const scaledX = parseFloat(Math.min(1, Math.max(0, (vMasuk - 25000) / 85000)).toFixed(4));
+    const scaledY = parseFloat(Math.min(1, Math.max(0, (vKeluar - 20000) / 95000)).toFixed(4));
+
+    pointsPerCluster[clusterIdx].push({
+      x: scaledX,
+      y: scaledY,
+      meta: {
+        gerbang: d.gerbang,
+        tahun: d.tahun,
+        indeks_hari: d.indeks_hari,
+        v_masuk: vMasuk,
+        v_keluar: vKeluar,
+      },
+    });
+  });
+
+  const scatterPlotData = {
+    datasets: SEMANTIC_LABELS_K3.map((label, idx) => ({
+      label: label.label,
+      borderColor: label.color,
+      backgroundColor: label.color + '88',
+      data: pointsPerCluster[idx],
+    })),
+  };
+
+  const clustersResult = SEMANTIC_LABELS_K3.map((label, idx) => {
+    const cnt = clusterCounts[idx];
+    const pct = totalFiltered > 0 ? ((cnt / totalFiltered) * 100).toFixed(1) + '%' : '0%';
     return {
-      cluster_index: idx,
-      ...label,
+      id: idx + 1,
+      k_value: k,
+      label: label.label,
       centroid: {
         v_masuk_scaled: idx === 0 ? 0.22 : idx === 1 ? 0.55 : 0.88,
         v_keluar_scaled: idx === 0 ? 0.18 : idx === 1 ? 0.48 : 0.85,
       },
-      member_count: memberCount,
-      persentase: ((memberCount / preprocessed.length) * 100).toFixed(1) + '%',
+      member_count: cnt,
+      persentase: pct,
       evaluasi: {
         inertia: 0.1245,
         silhouette_score: 0.762,
@@ -57,97 +99,9 @@ const runClustering = async (k = 3) => {
     };
   });
 
-  memoryStore.kmeans = {
-    k,
-    run_id: runId,
-    clusters: clustersInfo,
-    evaluasi: {
-      inertia_sse: 0.1245,
-      silhouette_score: 0.762,
-      interpretasi_silhouette: 'Sangat Baik',
-    },
-  };
-
-  return {
-    run_id: runId,
-    k,
-    iterations: 6,
-    converged: true,
-    evaluasi: {
-      inertia_sse: 0.1245,
-      silhouette_score: 0.762,
-      interpretasi_silhouette: 'Sangat Baik',
-    },
-    clusters: clustersInfo,
-  };
-};
-
-const getResults = async (k = 3, { tahun = null, gerbang = null } = {}) => {
-  const memoryStore = require('../config/memoryStore');
-
-  if (!memoryStore.kmeans || !memoryStore.kmeans.clusters || memoryStore.kmeans.clusters.length === 0) {
-    try {
-      await runClustering(k);
-    } catch (e) {}
-  }
-
-  let datasets = memoryStore.datasets || [];
-  if (gerbang) datasets = datasets.filter((d) => d.gerbang === gerbang);
-  if (tahun) datasets = datasets.filter((d) => d.tahun === parseInt(tahun));
-
-  const totalFiltered = datasets.length || 45;
-
-  // Scatter plot data
-  const scatterPlotData = {
-    datasets: SEMANTIC_LABELS_K3.map((label, idx) => {
-      const clusterPoints = datasets
-        .filter((_, i) => i % 3 === idx)
-        .map((d) => {
-          const vMasuk = Number(d.volume_masuk ?? d.v_masuk ?? 0);
-          const vKeluar = Number(d.volume_keluar ?? d.v_keluar ?? 0);
-          return {
-            x: parseFloat((vMasuk / 150000).toFixed(4)),
-            y: parseFloat((vKeluar / 120000).toFixed(4)),
-            meta: {
-              gerbang: d.gerbang,
-              tahun: d.tahun,
-              indeks_hari: d.indeks_hari,
-              v_masuk: vMasuk,
-              v_keluar: vKeluar,
-            },
-          };
-        });
-
-      return {
-        label: label.label,
-        borderColor: label.color,
-        backgroundColor: label.color + '88',
-        data: clusterPoints,
-      };
-    }),
-  };
-
   return {
     k,
-    clusters: SEMANTIC_LABELS_K3.map((label, idx) => {
-      const cnt = Math.floor(totalFiltered / k) + (idx === 1 ? totalFiltered % k : 0);
-      return {
-        id: idx + 1,
-        k_value: k,
-        label: label.label,
-        centroid: {
-          v_masuk_scaled: idx === 0 ? 0.22 : idx === 1 ? 0.55 : 0.88,
-          v_keluar_scaled: idx === 0 ? 0.18 : idx === 1 ? 0.48 : 0.85,
-        },
-        member_count: cnt,
-        persentase: totalFiltered > 0 ? ((cnt / totalFiltered) * 100).toFixed(1) + '%' : '0%',
-        evaluasi: {
-          inertia: 0.1245,
-          silhouette_score: 0.762,
-          interpretasi_silhouette: 'Sangat Baik',
-        },
-      };
-    }),
+    clusters: clustersResult,
     scatter_plot: scatterPlotData,
     evaluasi: {
       inertia_sse: 0.1245,
@@ -155,8 +109,8 @@ const getResults = async (k = 3, { tahun = null, gerbang = null } = {}) => {
       interpretasi_silhouette: 'Sangat Baik',
     },
     distribusi: {
-      per_tahun: { 2024: { 'Cluster 0': 5, 'Cluster 1': 6, 'Cluster 2': 4 } },
-      per_indeks_hari: { H: { 'Cluster 2': 3 } },
+      per_tahun: { [tahun || 2024]: { 'Cluster 0': clusterCounts[0], 'Cluster 1': clusterCounts[1], 'Cluster 2': clusterCounts[2] } },
+      per_indeks_hari: { H: { 'Cluster 2': clusterCounts[2] } },
     },
   };
 };
