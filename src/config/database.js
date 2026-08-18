@@ -46,32 +46,27 @@ function createSqlite3Polyfill() {
   };
 }
 
-let sequelize;
-
+let sqlite3Driver;
 try {
-  let sqlite3Driver;
-  try {
-    sqlite3Driver = require('sqlite3');
-  } catch (e) {
-    console.log('ℹ️ Using pure JS SQLite polyfill for Vercel Serverless Function');
-    sqlite3Driver = createSqlite3Polyfill();
-  }
+  sqlite3Driver = require('sqlite3');
+} catch (e) {
+  sqlite3Driver = createSqlite3Polyfill();
+}
 
-  const isSQLite = !process.env.DB_HOST || process.env.DB_DIALECT === 'sqlite';
-  const sqliteStorage = process.env.VERCEL ? ':memory:' : (process.env.DB_STORAGE || '/tmp/skripsi_lalin.sqlite');
+const isSQLite = !process.env.DB_HOST || process.env.DB_DIALECT === 'sqlite';
+const sqliteStorage = process.env.VERCEL ? ':memory:' : (process.env.DB_STORAGE || '/tmp/skripsi_lalin.sqlite');
 
-  if (isSQLite) {
-    sequelize = new Sequelize({
+const sequelize = isSQLite
+  ? new Sequelize({
       dialect: 'sqlite',
       storage: sqliteStorage,
       dialectModule: sqlite3Driver,
       logging: false,
-    });
-  } else {
-    sequelize = new Sequelize(
-      process.env.DB_NAME,
-      process.env.DB_USER,
-      process.env.DB_PASSWORD,
+    })
+  : new Sequelize(
+      process.env.DB_NAME || 'skripsi',
+      process.env.DB_USER || 'root',
+      process.env.DB_PASSWORD || '',
       {
         host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT) || 3306,
@@ -81,16 +76,6 @@ try {
         timezone: '+07:00',
       }
     );
-  }
-} catch (err) {
-  console.error('⚠️ Error initializing Sequelize instance:', err.message);
-  sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: ':memory:',
-    dialectModule: createSqlite3Polyfill(),
-    logging: false,
-  });
-}
 
 /**
  * Test koneksi database
